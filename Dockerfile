@@ -1,5 +1,4 @@
-# Stage 1: Base PHP with Composer & Node
-FROM php:8.1-fpm-bullseye AS base
+FROM php:8.1-fpm-bullseye
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -20,31 +19,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     autoconf \
     nano \
-    # Node.js for frontend build
-    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Extract PHP source for building extensions
 RUN docker-php-source extract
 
-# Configure and install GD separately to isolate errors
+# Configure and install extensions one-by-one to isolate errors
+RUN docker-php-ext-install pdo
+RUN docker-php-ext-install pdo_mysql
+RUN docker-php-ext-install mbstring
+RUN docker-php-ext-install xml
+RUN docker-php-ext-install ctype
+RUN docker-php-ext-install json
+RUN docker-php-ext-install bcmath
+
+# Configure and install GD
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install gd
 
-# Configure and install zip separately
+# Configure and install ZIP
 RUN docker-php-ext-configure zip \
     && docker-php-ext-install zip
-
-# Then install the rest
-RUN docker-php-ext-install \
-    pdo \
-    pdo_mysql \
-    mbstring \
-    xml \
-    ctype \
-    json \
-    bcmath
 
 # Cleanup PHP source
 RUN docker-php-source delete
@@ -52,32 +47,13 @@ RUN docker-php-source delete
 # Install Composer globally
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Stage 2: Laravel Application Setup
-FROM base AS app
-
+# Set working directory
 WORKDIR /var/www/html
 
-# Copy Laravel composer files first for caching
-COPY composer.json composer.lock ./
-
-# Install PHP dependencies (production only)
-RUN composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction
-
-# Copy Node package files
-COPY package.json package-lock.json ./
-
-# Install Node dependencies and build assets
-RUN npm install && npm run build
-
-# Copy full Laravel application
+# Copy Laravel files
 COPY . .
 
-# Cache Laravel config, routes, views
-RUN php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
-
-# Set permissions for storage and cache
+# Set permissions
 RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
