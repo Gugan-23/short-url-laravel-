@@ -10,7 +10,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     ca-certificates \
     build-essential \
     libpng-dev \
-    libjpeg62-turbo-dev \
+    libjpeg-dev \
     libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
@@ -23,32 +23,29 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && docker-php-ext-install pdo pdo_mysql mbstring tokenizer xml ctype json bcmath gd zip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Composer (latest) globally
+# Install Composer globally
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Set working directory in container
+# Set working directory
 WORKDIR /var/www/html
 
 # Copy composer files first to leverage Docker cache
 COPY composer.json composer.lock ./
 
-# Install PHP dependencies with Composer, optimize for production
+# Install PHP dependencies with Composer
 RUN composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction --no-scripts
 
-# Copy the rest of the application files
+# Copy remaining application files
 COPY . .
 
-# Run post-install scripts and cache clearing (if needed)
-RUN composer dump-autoload -o \
-    && php artisan config:cache \
-    && php artisan route:cache \
-    && php artisan view:cache
+# Cache config, routes, and views
+RUN php artisan config:cache && php artisan route:cache && php artisan view:cache
 
-# Set permissions on storage and bootstrap/cache
+# Set permissions for storage and bootstrap/cache
 RUN chown -R www-data:www-data storage bootstrap/cache
 
 # Expose port 9000 for PHP-FPM
 EXPOSE 9000
 
-# Start PHP-FPM server
+# Start PHP-FPM
 CMD ["php-fpm"]
