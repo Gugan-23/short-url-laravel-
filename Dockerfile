@@ -32,7 +32,11 @@ RUN docker-php-source extract
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install gd
 
-# Install other PHP extensions
+# Configure and install zip separately
+RUN docker-php-ext-configure zip \
+    && docker-php-ext-install zip
+
+# Then install the rest
 RUN docker-php-ext-install \
     pdo \
     pdo_mysql \
@@ -40,8 +44,7 @@ RUN docker-php-ext-install \
     xml \
     ctype \
     json \
-    bcmath \
-    zip
+    bcmath
 
 # Cleanup PHP source
 RUN docker-php-source delete
