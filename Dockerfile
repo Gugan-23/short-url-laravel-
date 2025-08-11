@@ -5,7 +5,9 @@ FROM php:8.1-fpm
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies and PHP extensions needed for Laravel
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    apt-transport-https \
+    ca-certificates \
     build-essential \
     libpng-dev \
     libjpeg62-turbo-dev \
@@ -18,26 +20,35 @@ RUN apt-get update && apt-get install -y \
     curl \
     libzip-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install pdo pdo_mysql mbstring tokenizer xml ctype json bcmath gd zip
+    && docker-php-ext-install pdo pdo_mysql mbstring tokenizer xml ctype json bcmath gd zip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Composer (latest)
+# Install Composer (latest) globally
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Set working directory in container
 WORKDIR /var/www/html
 
-# Copy existing application files
-COPY . .
+# Copy composer files first to leverage Docker cache
+COPY composer.json composer.lock ./
 
 # Install PHP dependencies with Composer, optimize for production
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction --no-scripts
 
-# Set permissions (optional, adjust to your needs)
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+# Copy the rest of the application files
+COPY . .
+
+# Run post-install scripts and cache clearing (if needed)
+RUN composer dump-autoload -o \
+    && php artisan config:cache \
+    && php artisan route:cache \
+    && php artisan view:cache
+
+# Set permissions on storage and bootstrap/cache
+RUN chown -R www-data:www-data storage bootstrap/cache
 
 # Expose port 9000 for PHP-FPM
 EXPOSE 9000
 
 # Start PHP-FPM server
 CMD ["php-fpm"]
-
