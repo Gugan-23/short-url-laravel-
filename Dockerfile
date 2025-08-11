@@ -1,10 +1,11 @@
-# Use official PHP 8.1 FPM Bullseye-based image
-FROM php:8.1-fpm-bullseye
+# ----------------------------------------
+# Stage 1: Base PHP with Composer & Node
+# ----------------------------------------
+FROM php:8.1-fpm-bullseye AS base
 
-# Avoid interactive prompts during apt installs
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Update and install system dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpng-dev \
@@ -12,14 +13,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
+    libzip-dev \
     zip \
     unzip \
     git \
     curl \
-    libzip-dev \
-    autoconf \
-    pkg-config \
     libssl-dev \
+    pkg-config \
+    autoconf \
+    nano \
+    # Node.js (for Vite or Laravel Mix)
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Extract PHP source for building extensions
@@ -40,33 +45,40 @@ RUN docker-php-ext-install \
     gd \
     zip
 
-# Enable tokenizer (usually built-in, but safe to include)
-RUN docker-php-ext-enable tokenizer
-
-# Remove PHP source to reduce image size
+# Cleanup PHP source
 RUN docker-php-source delete
 
 # Install Composer globally
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Set working directory
+# ----------------------------------------
+# Stage 2: Laravel Application Setup
+# ----------------------------------------
+FROM base AS app
+
 WORKDIR /var/www/html
 
-# Copy composer files first to leverage Docker cache
+# Copy Laravel composer files first for caching
 COPY composer.json composer.lock ./
 
 # Install PHP dependencies (production only)
 RUN composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction
 
-# Copy application files
+# Copy Node package files
+COPY package.json package-lock.json ./
+
+# Install Node dependencies and build assets
+RUN npm install && npm run build
+
+# Copy full Laravel application
 COPY . .
 
-# Cache Laravel config, routes, and views
+# Cache Laravel config, routes, views
 RUN php artisan config:cache \
     && php artisan route:cache \
     && php artisan view:cache
 
-# Set proper permissions
+# Set permissions for storage and cache
 RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
