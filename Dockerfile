@@ -1,16 +1,11 @@
-# Use official PHP 8.1 FPM Bullseye-based image with more complete source
+# Use official PHP 8.1 FPM Bullseye-based image
 FROM php:8.1-fpm-bullseye
 
-# Prevent interactive prompts during apt installs
+# Avoid interactive prompts during apt installs
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Update and upgrade OS packages
-RUN apt-get update && apt-get upgrade -y
-
-# Install system dependencies
-RUN apt-get install -y --no-install-recommends \
-    apt-transport-https \
-    ca-certificates \
+# Update and install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpng-dev \
     libjpeg-dev \
@@ -27,13 +22,13 @@ RUN apt-get install -y --no-install-recommends \
     libssl-dev \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Extract PHP source (needed for building some extensions)
+# Extract PHP source for building extensions
 RUN docker-php-source extract
 
-# Configure GD with JPEG and Freetype support
+# Configure GD extension
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg
 
-# Install PHP extensions (without tokenizer)
+# Install PHP extensions
 RUN docker-php-ext-install \
     pdo \
     pdo_mysql \
@@ -45,10 +40,10 @@ RUN docker-php-ext-install \
     gd \
     zip
 
-# Enable tokenizer explicitly (usually built-in, but just in case)
+# Enable tokenizer (usually built-in, but safe to include)
 RUN docker-php-ext-enable tokenizer
 
-# Cleanup PHP source to reduce image size
+# Remove PHP source to reduce image size
 RUN docker-php-source delete
 
 # Install Composer globally
@@ -57,23 +52,26 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy composer files separately to leverage Docker cache
+# Copy composer files first to leverage Docker cache
 COPY composer.json composer.lock ./
 
-# Install PHP dependencies without dev packages and optimize autoloader
-RUN composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction --no-scripts
+# Install PHP dependencies (production only)
+RUN composer install --no-dev --optimize-autoloader --prefer-dist --no-interaction
 
-# Copy all application files
+# Copy application files
 COPY . .
 
-# Cache config, routes, views to optimize performance
-RUN php artisan config:cache && php artisan route:cache && php artisan view:cache
+# Cache Laravel config, routes, and views
+RUN php artisan config:cache \
+    && php artisan route:cache \
+    && php artisan view:cache
 
-# Set permissions for Laravel storage and cache directories
-RUN chown -R www-data:www-data storage bootstrap/cache
+# Set proper permissions
+RUN chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
 
-# Expose port 9000 for PHP-FPM
+# Expose PHP-FPM port
 EXPOSE 9000
 
-# Start PHP-FPM process
+# Start PHP-FPM
 CMD ["php-fpm"]
