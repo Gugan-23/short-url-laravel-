@@ -1,6 +1,4 @@
-# ----------------------------------------
 # Stage 1: Base PHP with Composer & Node
-# ----------------------------------------
 FROM php:8.1-fpm-bullseye AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -22,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     autoconf \
     nano \
-    # Node.js (for Vite or Laravel Mix)
+    # Node.js for frontend build
     && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -30,10 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Extract PHP source for building extensions
 RUN docker-php-source extract
 
-# Configure GD extension
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg
+# Configure and install GD separately to isolate errors
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd
 
-# Install PHP extensions
+# Install other PHP extensions
 RUN docker-php-ext-install \
     pdo \
     pdo_mysql \
@@ -42,7 +41,6 @@ RUN docker-php-ext-install \
     ctype \
     json \
     bcmath \
-    gd \
     zip
 
 # Cleanup PHP source
@@ -51,9 +49,7 @@ RUN docker-php-source delete
 # Install Composer globally
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# ----------------------------------------
 # Stage 2: Laravel Application Setup
-# ----------------------------------------
 FROM base AS app
 
 WORKDIR /var/www/html
